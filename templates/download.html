@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Download File</h2>
+  <p>Your file is being prepared for download. Once ready, click the button below if the download does not start automatically.</p>
+  <a href="{{ url_for('download', file_hash=file_hash) }}" class="download-button">Download Now</a>
+{% endblock %}

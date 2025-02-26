@@ -1,0 +1,75 @@
+<!-- Updated upload.html -->
+{% extends "base.html" %}
+{% block header %}Upload Files{% endblock %}
+{% block content %}
+<div class="upload-container">
+  <form method="post" enctype="multipart/form-data" action="{{ url_for('upload') }}" class="upload-form">
+    <label class="custom-file-input">
+      <i class="fas fa-cloud-upload-alt fa-3x"></i>
+      <p>Drag & drop files or click to upload</p>
+      <input type="file" name="file" id="file-input" required>
+    </label>
+    <button type="submit" class="btn btn-primary">
+      <i class="fas fa-upload"></i>
+      Upload File
+    </button>
+  </form>
+  <!-- Progress Bar Container -->
+  <div id="progress-container" style="display: none; margin-top: 20px;">
+    <div class="progress" style="height: 25px;">
+      <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+        style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.querySelector('.upload-form');
+  const progressContainer = document.getElementById('progress-container');
+  const progressBar = document.getElementById('upload-progress-bar');
+
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fileInput = document.getElementById('file-input');
+    if(fileInput.files.length === 0) return;
+    const formData = new FormData(form);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', form.action, true);
+
+    // Update progress bar as upload progresses
+    xhr.upload.addEventListener("progress", function(event) {
+      if(event.lengthComputable) {
+        const percent = (event.loaded / event.total) * 100;
+        progressBar.style.width = percent + '%';
+        progressBar.textContent = Math.round(percent) + '%';
+      }
+    });
+
+    xhr.onreadystatechange = function() {
+      if(xhr.readyState === 4) {
+        if(xhr.status === 200) {
+          alert("File uploaded successfully.");
+          // Reset progress bar
+          progressBar.style.width = '0%';
+          progressBar.textContent = '0%';
+          progressContainer.style.display = 'none';
+          // Optionally, reload the page to show the file list
+          window.location.reload();
+        }
+        else {
+          alert("Upload failed.");
+          progressContainer.style.display = 'none';
+        }
+      }
+    };
+
+    // Show progress container and send the request
+    progressContainer.style.display = 'block';
+    xhr.send(formData);
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+cat > .gitignore <<EOF
+# Python
+*.pyc
+__pycache__/
+
+# Virtual environment
+venv/
+env/
+
+# Database files
+db.sqlite3
+
+# Other temporary files
+TEMP/
+output/
+EOF

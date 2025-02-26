@@ -1,0 +1,53 @@
+<!-- Updated base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudDrive</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+  <div class="app-container">
+    <nav class="sidebar">
+      <div class="logo">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <span>CloudDrive</span>
+      </div>
+      <ul class="nav-menu">
+        <li class="active">
+          <a href="{{ url_for('index') }}">
+              <i class="fas fa-home"></i>
+              <span>My Files</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('upload') }}">
+              <i class="fas fa-upload"></i>
+              <span>Upload</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+
+    <main class="content-area">
+      <div class="content-header">
+        <h1>{% block header %}{% endblock %}</h1>
+      </div>
+      
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="alert-container">
+            {% for message in messages %}
+              <div class="alert">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

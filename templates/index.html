@@ -1,0 +1,23 @@
+<!-- Updated index.html -->
+{% extends "base.html" %}
+{% block header %}My Files{% endblock %}
+{% block content %}
+<div class="file-grid">
+  {% for file in files %}
+    <div class="file-card">
+      <i class="fas fa-file-alt file-icon"></i>
+      <div class="file-name">{{ file[1] }}</div>
+      <div class="file-actions">
+        <a href="{{ url_for('download', file_hash=file[2]) }}" class="btn btn-primary">
+          <i class="fas fa-download"></i>
+        </a>
+        <form action="{{ url_for('delete_file', file_hash=file[2]) }}" method="post">
+          <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this file permanently?')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}
