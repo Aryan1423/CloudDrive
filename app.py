@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, session
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, session, jsonify
 import os
 from datetime import datetime, timedelta
 from functools import wraps
@@ -8,6 +8,9 @@ from bin.modules.uploader import Uploader
 from bin.modules.downloader import Downloader
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.formparser import parse_form_data
+import uuid
+import threading
+from bin.modules.url_downloader import URLDownloader
 
 # Initialize managers
 db = DBManager()
@@ -16,6 +19,9 @@ fm = FileManager()
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = "your_secret_key_here"  # Replace with a secure key
+
+# Dictionary to track URL download tasks
+url_download_tasks = {}
 
 # Ensure output directory exists (for merged files)
 if not os.path.exists(fm.output_path):
@@ -113,6 +119,94 @@ def upload():
             flash(str(e))
         return redirect(url_for("index"))
     return render_template("upload.html")
+
+@app.route("/upload_from_url", methods=["POST"])
+@login_required
+def upload_from_url():
+    url = request.form.get("url")
+    if not url:
+        flash("No URL provided")
+        return redirect(url_for("upload"))
+    
+    # Generate task ID for tracking progress
+    task_id = str(uuid.uuid4())
+    url_download_tasks[task_id] = {
+        "progress": 0,
+        "status": "Starting download...",
+        "complete": False,
+        "success": False
+    }
+    
+    # Start download in background thread
+    thread = threading.Thread(
+        target=process_url_download,
+        args=(url, task_id, session["user_id"])
+    )
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({"task_id": task_id})
+
+# Add this improved function to handle URL downloads
+
+def process_url_download(url, task_id, user_id):
+    try:
+        # Update task status
+        url_download_tasks[task_id]["status"] = "Downloading from URL..."
+        
+        # Download the file
+        downloader = URLDownloader(fm.base_path)
+        
+        def update_progress(progress, status_message=None):
+            url_download_tasks[task_id]["progress"] = progress
+            if status_message:
+                url_download_tasks[task_id]["status"] = status_message
+        
+        local_path = downloader.download_from_url(url, progress_callback=update_progress)
+        
+        # Update task status
+        url_download_tasks[task_id]["status"] = "Processing file and uploading to Telegram..."
+        url_download_tasks[task_id]["progress"] = 0
+        
+        # Process the downloaded file
+        uploader = Uploader(local_path)
+        uploader.run(user_id=user_id)
+        
+        # Complete task
+        url_download_tasks[task_id]["status"] = "Complete"
+        url_download_tasks[task_id]["progress"] = 100
+        url_download_tasks[task_id]["complete"] = True
+        url_download_tasks[task_id]["success"] = True
+        
+        # Schedule task cleanup after 30 minutes
+        def cleanup_task():
+            if task_id in url_download_tasks:
+                del url_download_tasks[task_id]
+                
+        scheduler.add_job(
+            func=cleanup_task,
+            trigger="date",
+            run_date=datetime.now() + timedelta(minutes=30)
+        )
+        
+    except Exception as e:
+        app.logger.error(f"Error processing URL download: {str(e)}")
+        url_download_tasks[task_id]["status"] = f"Error: {str(e)}"
+        url_download_tasks[task_id]["complete"] = True
+        url_download_tasks[task_id]["success"] = False
+
+@app.route("/task/progress/<task_id>")
+@login_required
+def task_progress(task_id):
+    if task_id in url_download_tasks:
+        return jsonify(url_download_tasks[task_id])
+    return jsonify({
+        "progress": 0,
+        "status": "Task not found",
+        "complete": True,
+        "success": False,
+        "error": "Task ID not found"
+    })
 
 @app.route("/download/<file_hash>")
 @login_required

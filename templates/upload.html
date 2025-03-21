@@ -3,23 +3,55 @@
 {% block header %}Upload Files{% endblock %}
 {% block content %}
 <div class="upload-container">
-  <form method="post" enctype="multipart/form-data" action="{{ url_for('upload') }}" class="upload-form">
-    <label class="custom-file-input">
-      <i class="fas fa-cloud-upload-alt fa-3x"></i>
-      <p>Drag & drop files or click to upload</p>
-      <input type="file" name="file" id="file-input" required>
-    </label>
-    <button type="submit" class="btn btn-primary">
-      <i class="fas fa-upload"></i>
-      Upload File
-    </button>
-  </form>
+  <ul class="nav nav-tabs" id="uploadTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="file-upload-tab" data-bs-toggle="tab" data-bs-target="#file-upload" type="button" role="tab">Upload File</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="url-upload-tab" data-bs-toggle="tab" data-bs-target="#url-upload" type="button" role="tab">URL/Torrent</button>
+    </li>
+  </ul>
+
+  <div class="tab-content mt-3" id="uploadTabContent">
+    <!-- File Upload Tab -->
+    <div class="tab-pane fade show active" id="file-upload" role="tabpanel">
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('upload') }}" class="upload-form">
+        <label class="custom-file-input">
+          <i class="fas fa-cloud-upload-alt fa-3x"></i>
+          <p>Drag & drop files or click to upload</p>
+          <input type="file" name="file" id="file-input" required>
+        </label>
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-upload"></i>
+          Upload File
+        </button>
+      </form>
+    </div>
+    
+    <!-- URL Upload Tab -->
+    <div class="tab-pane fade" id="url-upload" role="tabpanel">
+      <form method="post" action="{{ url_for('upload_from_url') }}" class="url-upload-form">
+        <div class="form-group">
+          <label for="url-input">URL or Magnet Link:</label>
+          <input type="url" class="form-control" id="url-input" name="url" 
+                 placeholder="https://example.com/file.mp4 or magnet:?xt=urn:btih:..." required>
+          <small class="form-text text-muted">Supports direct URLs, .torrent files, and magnet links</small>
+        </div>
+        <button type="submit" class="btn btn-primary mt-2">
+          <i class="fas fa-download"></i>
+          Download & Process
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- Progress Bar Container -->
   <div id="progress-container" style="display: none; margin-top: 20px;">
     <div class="progress" style="height: 25px;">
       <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
         style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
     </div>
+    <p id="progress-status" class="mt-2">Preparing...</p>
   </div>
 </div>
 {% endblock %}
@@ -27,49 +59,121 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  const form = document.querySelector('.upload-form');
+  // File upload form handling
+  const uploadForm = document.querySelector('.upload-form');
+  const urlForm = document.querySelector('.url-upload-form');
   const progressContainer = document.getElementById('progress-container');
   const progressBar = document.getElementById('upload-progress-bar');
+  const progressStatus = document.getElementById('progress-status');
 
-  form.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const fileInput = document.getElementById('file-input');
-    if(fileInput.files.length === 0) return;
-    const formData = new FormData(form);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', form.action, true);
+  // File upload handler
+  if (uploadForm) {
+    uploadForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('file-input');
+      if(fileInput.files.length === 0) return;
+      
+      const formData = new FormData(uploadForm);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', uploadForm.action, true);
 
-    // Update progress bar as upload progresses
-    xhr.upload.addEventListener("progress", function(event) {
-      if(event.lengthComputable) {
-        const percent = (event.loaded / event.total) * 100;
-        progressBar.style.width = percent + '%';
-        progressBar.textContent = Math.round(percent) + '%';
-      }
+      xhr.upload.addEventListener("progress", function(event) {
+        if(event.lengthComputable) {
+          const percent = (event.loaded / event.total) * 100;
+          progressBar.style.width = percent + '%';
+          progressBar.textContent = Math.round(percent) + '%';
+          progressStatus.textContent = "Uploading file...";
+        }
+      });
+
+      xhr.onreadystatechange = function() {
+        if(xhr.readyState === 4) {
+          if(xhr.status === 200) {
+            // File is uploaded to the server
+            progressStatus.textContent = "Processing file and uploading to storage...";
+            
+            // The server response will come only after Telegram upload is complete
+            // So when we get a 200 response, we can redirect immediately
+            window.location.href = '/';  // Redirect to index (files page)
+          } else {
+            progressStatus.textContent = "Upload failed.";
+          }
+        }
+      };
+
+      progressContainer.style.display = 'block';
+      xhr.send(formData);
     });
+  }
 
-    xhr.onreadystatechange = function() {
-      if(xhr.readyState === 4) {
-        if(xhr.status === 200) {
-          alert("File uploaded successfully.");
-          // Reset progress bar
-          progressBar.style.width = '0%';
-          progressBar.textContent = '0%';
-          progressContainer.style.display = 'none';
-          // Optionally, reload the page to show the file list
-          window.location.reload();
-        }
-        else {
-          alert("Upload failed.");
-          progressContainer.style.display = 'none';
-        }
-      }
-    };
+  // URL upload handler
+  if (urlForm) {
+    urlForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const urlInput = document.getElementById('url-input');
+      if(!urlInput.value) return;
+      
+      const formData = new FormData(urlForm);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', urlForm.action, true);
+      xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
 
-    // Show progress container and send the request
-    progressContainer.style.display = 'block';
-    xhr.send(formData);
-  });
+      xhr.onreadystatechange = function() {
+        if(xhr.readyState === 4) {
+          if(xhr.status === 200) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              if (response.task_id) {
+                progressStatus.textContent = "Downloading from URL...";
+                progressContainer.style.display = 'block';
+                pollProgress(response.task_id);
+              }
+            } catch(e) {
+              progressStatus.textContent = "Error processing response.";
+            }
+          } else {
+            progressStatus.textContent = "Request failed.";
+          }
+        }
+      };
+
+      const params = new URLSearchParams();
+      params.append('url', urlInput.value);
+      xhr.send(params);
+    });
+  }
+
+  // Function to poll progress from server
+  function pollProgress(taskId) {
+    const progressEndpoint = `/task/progress/${taskId}`;
+    
+    function checkProgress() {
+      fetch(progressEndpoint)
+        .then(response => response.json())
+        .then(data => {
+          progressBar.style.width = data.progress + '%';
+          progressBar.textContent = Math.round(data.progress) + '%';
+          progressStatus.textContent = data.status;
+          
+          if (data.complete) {
+            if (data.success) {
+              // No delay - redirect immediately when complete
+              window.location.href = '/';
+            } else {
+              progressStatus.textContent = "Error: " + data.error;
+            }
+          } else {
+            setTimeout(checkProgress, 1000);
+          }
+        })
+        .catch(error => {
+          console.error('Error checking progress:', error);
+          progressStatus.textContent = "Error checking progress.";
+        });
+    }
+    
+    checkProgress();
+  }
 });
 </script>
 {% endblock %}
