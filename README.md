@@ -1,13 +1,13 @@
-# 🕵️‍♂️ CloudDrive – Telegram File Harvester Bot
+# 🕵️‍♂️ CloudDrive – Unlimited Telegram Storage
 
 ⚠️ **WARNING**\
-Use this tool responsibly. It downloads unlimited files (documents, photos, videos) from Telegram channels, groups, or chats. You must comply with Telegram’s Terms of Service and local laws. The author is not liable for misuse.
+Use this tool responsibly. It uploads and downloads unlimited size files by Converting them into Chunks. You must comply with Telegram’s Terms of Service and local laws. The author is not liable for misuse.
 
 ---
 
 ## 📌 Features
 
-- Automatically downloads documents, photos, videos, and other attachments from a specified Telegram chat.
+- Automatically downloads or Upload files of unlimited size, no limit.
 - Uses a Telegram **bot**, authenticated via Bot Token (`.env`).
 - Ideal for headless setups (server, VPS, Codespaces).
 
@@ -16,7 +16,7 @@ Use this tool responsibly. It downloads unlimited files (documents, photos, vide
 ## 🧱 Prerequisites
 
 - Python **3.7+**
-- Telegram Bot and Bot Token (via [BotFather](https://core.telegram.org/bots))
+- Telegram Bot and Bot Token from BotFather (via [BotFather](https://core.telegram.org/bots))
 - Target Chat/Channel/Group ID
 - Basic knowledge of `.env` and environment variables
 
@@ -104,18 +104,7 @@ Filter specific file types using:
 - `filters.PHOTO`
 - `filters.VIDEO`
 
-For large files over 20 MB, use local mode with a custom Bot API server (see documentation).
 
-## ⚠️ Limitations & Tips
-
-- **Max file size (Bot API)**:
-  - Downloads: up to 20 MB
-  - Uploads: up to 50 MB
-
-To exceed these limits, run your own Bot API server in local mode (allows downloads up to \~2 GB).
-
-- Bot cannot access chat history unless it's a member of the chat.
-- Ensure proper bot permissions in the target chat.
 
 ## 🧾 Troubleshooting
 
@@ -124,30 +113,10 @@ To exceed these limits, run your own Bot API server in local mode (allows downlo
   - Verify the correct `TARGET_CHAT_ID`.
   - Confirm your filters match the message types being sent.
 
-- **File size errors?**
 
-  - Use local mode for larger files with a self-hosted Bot API server.
-
-## 💡 Deploy with Docker
-
-**Dockerfile**
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-CMD ["python", "bot.py"]
+## 💡 Deploy 
 ```
-
-Run the container:
-
-```bash
-docker build -t clouddrive-bot .
-docker run -d \
-  --env-file .env \
-  -v $(pwd)/downloads:/app/downloads \
-  clouddrive-bot
+python app.py
 ```
 
 ## 📄 License & Ethics
@@ -158,7 +127,5 @@ Released under the **MIT License**. Use ethically and responsibly. Respect Teleg
 
 Found a bug or want a feature? Open an issue or submit a pull request!
 
-## ✅ Summary
 
-**CloudDrive** is a Telegram bot that securely saves files from specified chats using environment-based configuration. It's easy to deploy and adapt, especially in headless environments—but use it with care.
 
