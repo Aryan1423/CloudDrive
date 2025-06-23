@@ -1,0 +1,384 @@
+<!-- Updated index.html -->
+{% extends "base.html" %}
+{% block header %}My Files{% endblock %}
+{% block content %}
+<div class="file-grid">
+  {% for file in files %}
+    <div class="file-card">
+      <i class="fas fa-file-alt file-icon"></i>
+      <div class="file-name">{{ file[1] }}</div>
+      <div class="file-actions">
+        <button class="btn btn-primary download-btn" 
+                onclick="smartDownload('{{ file[2] }}', '{{ file[1] }}')" 
+                data-file-hash="{{ file[2] }}">
+          <i class="fas fa-download"></i>
+        </button>
+        <button type="button" class="btn btn-info" onclick="shareFile('{{ file[2] }}', '{{ file[1] }}')">
+          <i class="fas fa-share-alt"></i>
+        </button>
+        <form action="{{ url_for('delete_file', file_hash=file[2]) }}" method="post">
+          <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this file permanently?')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Add download progress modal -->
+<div class="modal fade" id="downloadModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Downloading: <span id="downloadFileName"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="progress mb-3">
+          <div id="downloadProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+        <div id="downloadStatus" class="text-center">Preparing download...</div>
+        <div class="d-flex justify-content-between mt-3">
+          <button id="pauseDownloadBtn" class="btn btn-warning" disabled>Pause</button>
+          <button id="resumeDownloadBtn" class="btn btn-success" disabled>Resume</button>
+          <button id="cancelDownloadBtn" class="btn btn-danger">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add sharing modal -->
+<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="shareModalLabel">Share File: <span id="shareFileName"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="expiresDays" class="form-label">Link expires after:</label>
+          <select class="form-select" id="expiresDays">
+            <option value="">Never expires</option>
+            <option value="1">1 day</option>
+            <option value="7">7 days</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+          </select>
+        </div>
+        <button class="btn btn-primary w-100 mb-3" onclick="createShareLink()">Generate Share Link</button>
+        
+        <div id="shareUrlContainer" class="d-none mb-4">
+          <label class="form-label">Universal Download Link:</label>
+          <div class="input-group">
+            <input type="text" class="form-control" id="shareUrlInput" readonly>
+            <button class="btn btn-outline-secondary" type="button" onclick="copyShareUrl()">
+              <i class="fas fa-copy"></i>
+            </button>
+          </div>
+          <small class="form-text text-muted">This link works for both browser downloads and download managers like FDM.</small>
+        </div>
+        
+        <hr>
+        <h6 class="mb-3">Existing Share Links</h6>
+        <div id="existingShares" class="list-group">
+          <!-- Will be populated by JavaScript -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Download manager
+  let downloadController = null;
+  let downloadReader = null;
+  let downloadFileHash = '';
+  let downloadFileName = '';
+  let downloadSize = 0;
+  let downloadedSize = 0;
+  let downloadPaused = false;
+  let downloadPosition = 0;
+  
+  function smartDownload(fileHash, fileName) {
+    downloadFileHash = fileHash;
+    downloadFileName = fileName;
+    downloadedSize = 0;
+    downloadPosition = 0;
+    
+    // Reset UI
+    document.getElementById('downloadFileName').textContent = fileName;
+    document.getElementById('downloadProgress').style.width = '0%';
+    document.getElementById('downloadStatus').textContent = 'Preparing download...';
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('downloadModal'));
+    modal.show();
+    
+    // Start download
+    startDownload();
+  }
+  
+  function startDownload() {
+    // Create abort controller to allow cancellation
+    downloadController = new AbortController();
+    const signal = downloadController.signal;
+    
+    // Set up headers for resume if needed
+    const headers = {};
+    if (downloadPosition > 0) {
+      headers['Range'] = `bytes=${downloadPosition}-`;
+    }
+    
+    // Update buttons
+    document.getElementById('pauseDownloadBtn').disabled = false;
+    document.getElementById('resumeDownloadBtn').disabled = true;
+    document.getElementById('cancelDownloadBtn').disabled = false;
+    
+    fetch(`/download/${downloadFileHash}`, {
+      signal,
+      headers
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+      
+      // Get total size from Content-Length header
+      const contentLength = response.headers.get('Content-Length');
+      if (contentLength) {
+        downloadSize = parseInt(contentLength) + downloadPosition;
+      }
+      
+      // Create a reader from the response body stream
+      downloadReader = response.body.getReader();
+      
+      // Process the stream
+      return processStream();
+    })
+    .catch(error => {
+      if (error.name === 'AbortError') {
+        document.getElementById('downloadStatus').textContent = 'Download cancelled';
+      } else {
+        document.getElementById('downloadStatus').textContent = `Error: ${error.message}`;
+        
+        // Enable resume button on error
+        document.getElementById('pauseDownloadBtn').disabled = true;
+        document.getElementById('resumeDownloadBtn').disabled = false;
+      }
+    });
+  }
+  
+  function processStream() {
+    return new ReadableStream({
+      start(controller) {
+        pump();
+        
+        function pump() {
+          downloadReader.read().then(({ done, value }) => {
+            if (done) {
+              // Download complete
+              controller.close();
+              document.getElementById('downloadStatus').textContent = 'Download complete!';
+              document.getElementById('pauseDownloadBtn').disabled = true;
+              document.getElementById('resumeDownloadBtn').disabled = true;
+              saveDownloadedFile();
+              return;
+            }
+            
+            // Process chunk
+            downloadedSize += value.length;
+            downloadPosition += value.length;
+            
+            // Update progress
+            if (downloadSize) {
+              const percent = Math.round((downloadedSize / downloadSize) * 100);
+              document.getElementById('downloadProgress').style.width = `${percent}%`;
+              document.getElementById('downloadStatus').textContent = 
+                `Downloaded ${formatBytes(downloadedSize)} of ${formatBytes(downloadSize)} (${percent}%)`;
+            } else {
+              document.getElementById('downloadStatus').textContent = 
+                `Downloaded ${formatBytes(downloadedSize)}`;
+            }
+            
+            controller.enqueue(value);
+            pump();
+          }).catch(error => {
+            console.error('Download stream error:', error);
+            controller.error(error);
+          });
+        }
+      }
+    });
+  }
+  
+  function pauseDownload() {
+    if (downloadController) {
+      downloadController.abort();
+      downloadPaused = true;
+      document.getElementById('pauseDownloadBtn').disabled = true;
+      document.getElementById('resumeDownloadBtn').disabled = false;
+      document.getElementById('downloadStatus').textContent = 'Download paused';
+    }
+  }
+  
+  function resumeDownload() {
+    if (downloadPaused) {
+      downloadPaused = false;
+      startDownload();
+    }
+  }
+  
+  function cancelDownload() {
+    if (downloadController) {
+      downloadController.abort();
+      downloadPosition = 0;
+      downloadedSize = 0;
+      downloadPaused = false;
+      document.getElementById('downloadStatus').textContent = 'Download cancelled';
+      document.getElementById('pauseDownloadBtn').disabled = true;
+      document.getElementById('resumeDownloadBtn').disabled = true;
+    }
+  }
+  
+  function saveDownloadedFile() {
+    // Create download link to trigger browser download
+    const a = document.createElement('a');
+    a.href = `/download/${downloadFileHash}`;
+    a.download = downloadFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+  
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  // Share functionality
+  let currentFileHash = '';
+  
+  function shareFile(fileHash, fileName) {
+    currentFileHash = fileHash;
+    document.getElementById('shareFileName').textContent = fileName;
+    document.getElementById('shareUrlContainer').classList.add('d-none');
+    
+    // Load existing shares
+    fetchExistingShares();
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('shareModal'));
+    modal.show();
+  }
+  
+  function createShareLink() {
+    const expiresDays = document.getElementById('expiresDays').value;
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('expires_days', expiresDays);
+    
+    // Send request
+    fetch(`/share/${currentFileHash}`, {
+      method: 'POST',
+      body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+      const shareUrlContainer = document.getElementById('shareUrlContainer');
+      const shareUrlInput = document.getElementById('shareUrlInput');
+      
+      // Use only the FDM URL as it's the most compatible option
+      shareUrlInput.value = data.universal_url;
+      shareUrlContainer.classList.remove('d-none');
+      
+      // Refresh existing shares
+      fetchExistingShares();
+    })
+    .catch(error => {
+      console.error('Error creating share link:', error);
+      alert('Failed to create share link');
+    });
+  }
+  
+  function copyShareUrl() {
+    const shareUrlInput = document.getElementById('shareUrlInput');
+    shareUrlInput.select();
+    document.execCommand('copy');
+    alert('Universal download link copied to clipboard!');
+  }
+  
+  function fetchExistingShares() {
+    fetch(`/file_shares/${currentFileHash}`)
+    .then(response => response.json())
+    .then(data => {
+      const sharesContainer = document.getElementById('existingShares');
+      sharesContainer.innerHTML = '';
+      
+      if (data.shares && data.shares.length > 0) {
+        data.shares.forEach(share => {
+          if (!share.is_expired) {
+            const shareElement = document.createElement('div');
+            shareElement.className = 'list-group-item d-flex justify-content-between align-items-center';
+            
+            const shareUrl = document.createElement('div');
+            shareUrl.className = 'text-truncate me-2';
+            shareUrl.style.maxWidth = '300px';
+            shareUrl.textContent = share.url;
+            
+            const revokeButton = document.createElement('button');
+            revokeButton.className = 'btn btn-sm btn-danger';
+            revokeButton.innerHTML = '<i class="fas fa-times"></i>';
+            revokeButton.onclick = () => revokeShare(share.share_id);
+            
+            shareElement.appendChild(shareUrl);
+            shareElement.appendChild(revokeButton);
+            sharesContainer.appendChild(shareElement);
+          }
+        });
+        
+        if (sharesContainer.innerHTML === '') {
+          sharesContainer.innerHTML = '<div class="list-group-item">No active share links</div>';
+        }
+      } else {
+        sharesContainer.innerHTML = '<div class="list-group-item">No share links found</div>';
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching shares:', error);
+    });
+  }
+  
+  function revokeShare(shareId) {
+    if (confirm('Are you sure you want to revoke this share link?')) {
+      fetch(`/revoke_share/${shareId}`, {
+        method: 'POST'
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          fetchExistingShares();
+        }
+      })
+      .catch(error => {
+        console.error('Error revoking share:', error);
+      });
+    }
+  }
+  
+  // Set up event listeners when page loads
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('pauseDownloadBtn').addEventListener('click', pauseDownload);
+    document.getElementById('resumeDownloadBtn').addEventListener('click', resumeDownload);
+    document.getElementById('cancelDownloadBtn').addEventListener('click', cancelDownload);
+  });
+</script>
+{% endblock %}

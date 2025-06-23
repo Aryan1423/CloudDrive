@@ -1,0 +1,341 @@
+<!-- Updated base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}CloudDrive{% endblock %}</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <style>
+    .custom-file-input {
+      display: block;
+      padding: 20px;
+      border: 2px dashed #ccc;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 15px;
+    }
+    .custom-file-input input[type="file"] {
+      display: none;
+    }
+    .upload-container {
+      max-width: 600px;
+      margin: 20px auto;
+    }
+    
+    /* Add these styles for the auth container */
+    .auth-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 3rem auto; /* Add some vertical spacing */
+    }
+    
+    .auth-card {
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      width: 100%;
+      max-width: 400px;
+    }
+    
+    .auth-title {
+      text-align: center;
+      margin-bottom: 25px;
+      color: #333;
+    }
+    
+    .auth-form .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .auth-form label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    .input-with-icon {
+      position: relative;
+    }
+    
+    .input-with-icon i {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      color: #aaa;
+    }
+    
+    .input-with-icon input {
+      padding: 10px 10px 10px 40px;
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    
+    .btn-block {
+      width: 100%;
+      margin-top: 10px;
+    }
+    
+    .auth-footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 14px;
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+      <a class="navbar-brand" href="{{ url_for('index') }}">CloudDrive</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto align-items-center">
+          {% if 'user_id' in session %}
+            <li class="nav-item notification-wrapper">
+              <div class="notification-icon" id="notification-toggle">
+                <i class="fas fa-bell"></i>
+                <span class="badge rounded-pill bg-danger" id="notification-badge">0</span>
+              </div>
+              <div class="notification-panel">
+                <div class="notification-header">
+                  <h6>Tasks</h6>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="clearCompletedTasks()">Clear Completed</button>
+                </div>
+                <div class="notification-body" id="notification-list">
+                  <!-- Tasks will be displayed here -->
+                </div>
+              </div>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('index') }}">Files</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('upload') }}">Upload</a>
+            </li>
+            
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+            </li>
+          {% else %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('register') }}">Register</a>
+            </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-info alert-dismissible fade show">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Notification and task monitoring system
+    let activeTasks = {};
+    let lastProgressUpdate = {};
+    const STALL_TIMEOUT = 3 * 60 * 1000; // 3 minutes in milliseconds
+
+    function initTaskMonitoring() {
+      // Check for active tasks periodically
+      checkActiveTasks();
+      setInterval(checkActiveTasks, 3000); // Check every 3 seconds
+      
+      // Set up notification toggle behavior
+      document.getElementById('notification-toggle').addEventListener('click', function(e) {
+        e.stopPropagation();
+        document.querySelector('.notification-panel').classList.toggle('show');
+      });
+      
+      // Close notification panel when clicking outside
+      document.addEventListener('click', function(event) {
+        if (document.querySelector('.notification-panel.show') && 
+            !document.querySelector('.notification-panel').contains(event.target)) {
+          document.querySelector('.notification-panel').classList.remove('show');
+        }
+      });
+    }
+
+    function checkActiveTasks() {
+      // Check URL download tasks
+      fetch('/active_tasks')
+        .then(response => response.json())
+        .then(data => {
+          updateActiveTasks(data.tasks);
+          updateNotificationBadge();
+          updateNotificationList();
+        })
+        .catch(error => {
+          console.error('Error checking active tasks:', error);
+        });
+    }
+
+    function updateActiveTasks(tasks) {
+      // Update the activeTasks object with latest status
+      for (const taskId in tasks) {
+        const task = tasks[taskId];
+        
+        // Check for stalled tasks (no progress update in a while)
+        if (!task.complete && lastProgressUpdate[taskId]) {
+          const timeSinceUpdate = Date.now() - lastProgressUpdate[taskId].time;
+          const previousProgress = lastProgressUpdate[taskId].progress;
+          
+          // If progress hasn't changed in STALL_TIMEOUT ms, mark as stalled
+          if (timeSinceUpdate > STALL_TIMEOUT && previousProgress === task.progress) {
+            task.stalled = true;
+          }
+        }
+        
+        // Track progress updates to detect stalls
+        if (!lastProgressUpdate[taskId] || lastProgressUpdate[taskId].progress !== task.progress) {
+          lastProgressUpdate[taskId] = {
+            progress: task.progress,
+            time: Date.now()
+          };
+          task.stalled = false;
+        }
+        
+        // Add to active tasks
+        activeTasks[taskId] = task;
+      }
+      
+      // Remove tasks that are no longer active
+      for (const taskId in activeTasks) {
+        if (!tasks[taskId]) {
+          delete activeTasks[taskId];
+          delete lastProgressUpdate[taskId];
+        }
+      }
+    }
+
+    function updateNotificationBadge() {
+      const count = Object.values(activeTasks).filter(task => !task.complete).length;
+      const badge = document.getElementById('notification-badge');
+      
+      badge.textContent = count;
+      badge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+
+    function updateNotificationList() {
+      const list = document.getElementById('notification-list');
+      list.innerHTML = '';
+      
+      const taskIds = Object.keys(activeTasks);
+      if (taskIds.length === 0) {
+        list.innerHTML = '<div class="no-tasks">No active tasks</div>';
+        return;
+      }
+      
+      // Sort tasks: active first, then recently completed
+      taskIds.sort((a, b) => {
+        // Active tasks before completed
+        if (activeTasks[a].complete !== activeTasks[b].complete) {
+          return activeTasks[a].complete ? 1 : -1;
+        }
+        // Otherwise by most recent activity
+        return lastProgressUpdate[b]?.time - lastProgressUpdate[a]?.time;
+      });
+      
+      taskIds.forEach(taskId => {
+        const task = activeTasks[taskId];
+        const taskElement = document.createElement('div');
+        
+        // Determine task class based on status
+        let taskClass = 'notification-task';
+        let statusClass = 'bg-primary';
+        
+        if (task.complete) {
+          statusClass = task.success ? 'bg-success' : 'bg-danger';
+          taskClass += task.success ? ' completed-success' : ' completed-error';
+        } else if (task.stalled) {
+          statusClass = 'bg-warning';
+          taskClass += ' stalled';
+        }
+        
+        taskElement.className = taskClass;
+        
+        const taskName = task.fileName || 'URL Download';
+        const taskProgress = Math.min(100, Math.max(0, task.progress || 0));
+        
+        taskElement.innerHTML = `
+          <div class="task-header">
+            <div class="task-name">${taskName}</div>
+            ${!task.complete ? `
+              <button class="btn btn-sm btn-danger btn-icon" onclick="cancelTask('${taskId}')">
+                <i class="fas fa-times"></i>
+              </button>
+            ` : ''}
+          </div>
+          <div class="task-progress">
+            <div class="progress">
+              <div class="progress-bar ${statusClass}" style="width: ${taskProgress}%"></div>
+            </div>
+            <div class="task-status">
+              ${task.stalled ? '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Stalled - </span>' : ''}
+              ${task.status || 'Processing...'}
+            </div>
+          </div>
+        `;
+        
+        list.appendChild(taskElement);
+      });
+    }
+
+    function cancelTask(taskId) {
+      fetch(`/cancel_task/${taskId}`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            checkActiveTasks();
+          }
+        })
+        .catch(error => {
+          console.error('Error cancelling task:', error);
+        });
+    }
+
+    function clearCompletedTasks() {
+      fetch('/clear_completed_tasks', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            checkActiveTasks();
+          }
+        })
+        .catch(error => {
+          console.error('Error clearing tasks:', error);
+        });
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', initTaskMonitoring);
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
