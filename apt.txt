@@ -1,0 +1,9 @@
+build-essential
+cmake
+libboost-dev
+libboost-system-dev
+libboost-filesystem-dev
+libboost-thread-dev
+libssl-dev
+pkg-config
+libtorrent-rasterbar-dev

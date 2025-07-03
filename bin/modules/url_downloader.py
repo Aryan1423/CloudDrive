@@ -7,12 +7,29 @@ import zipfile
 from urllib.parse import urlparse, unquote
 
 # Try to import libtorrent, but make it optional
+LIBTORRENT_AVAILABLE = False
+lt = None
+
+# Try different libtorrent packages
 try:
     import libtorrent as lt
     LIBTORRENT_AVAILABLE = True
+    logging.info("libtorrent imported successfully")
 except ImportError:
-    LIBTORRENT_AVAILABLE = False
-    logging.warning("libtorrent not available - torrent downloads will be disabled")
+    try:
+        # Try alternative package name
+        import deluge_libtorrent as lt
+        LIBTORRENT_AVAILABLE = True
+        logging.info("deluge-libtorrent imported successfully")
+    except ImportError:
+        try:
+            # Try another alternative
+            from libtorrent import libtorrent as lt
+            LIBTORRENT_AVAILABLE = True
+            logging.info("Alternative libtorrent imported successfully")
+        except ImportError:
+            LIBTORRENT_AVAILABLE = False
+            logging.warning("libtorrent not available - torrent downloads will be disabled")
 
 class URLDownloader:
     def __init__(self, base_path="TEMP"):
