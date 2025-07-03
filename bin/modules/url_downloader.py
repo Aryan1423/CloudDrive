@@ -1,11 +1,18 @@
 import os
 import requests
 import logging
-import libtorrent as lt
 import time
 import shutil
 import zipfile
 from urllib.parse import urlparse, unquote
+
+# Try to import libtorrent, but make it optional
+try:
+    import libtorrent as lt
+    LIBTORRENT_AVAILABLE = True
+except ImportError:
+    LIBTORRENT_AVAILABLE = False
+    logging.warning("libtorrent not available - torrent downloads will be disabled")
 
 class URLDownloader:
     def __init__(self, base_path="TEMP"):
@@ -32,6 +39,8 @@ class URLDownloader:
         
         # Check if URL is a magnet link or torrent
         if url.startswith('magnet:') or url.endswith('.torrent'):
+            if not LIBTORRENT_AVAILABLE:
+                raise Exception("Torrent downloads are not available - libtorrent is not installed. Please use direct HTTP/HTTPS URLs instead.")
             return self.download_torrent(url, local_path, progress_callback)
         
         # Regular HTTP download
@@ -62,6 +71,9 @@ class URLDownloader:
     
     def download_torrent(self, torrent_url, destination_path, progress_callback=None):
         """Download a file from a torrent or magnet link"""
+        if not LIBTORRENT_AVAILABLE:
+            raise Exception("Torrent downloads are not available - libtorrent is not installed")
+            
         logging.info(f"Downloading from torrent: {torrent_url}")
         
         # Create a session with default settings
