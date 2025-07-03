@@ -4,4 +4,3 @@ requests==2.32.3
 python-dotenv==1.0.1
 numpy==2.2.3
 gunicorn==23.0.0
-libtorrent==2.0.10

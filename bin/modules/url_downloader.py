@@ -10,26 +10,34 @@ from urllib.parse import urlparse, unquote
 LIBTORRENT_AVAILABLE = False
 lt = None
 
-# Try different libtorrent packages
-try:
-    import libtorrent as lt
-    LIBTORRENT_AVAILABLE = True
-    logging.info("libtorrent imported successfully")
-except ImportError:
+# Try different libtorrent packages in order of preference
+libtorrent_packages = [
+    ('libtorrent', 'libtorrent'),
+    ('python_libtorrent', 'python-libtorrent'), 
+    ('deluge_libtorrent', 'deluge-libtorrent'),
+    ('libtorrent.libtorrent', 'alternative libtorrent')
+]
+
+for package_name, display_name in libtorrent_packages:
     try:
-        # Try alternative package name
-        import deluge_libtorrent as lt
+        if '.' in package_name:
+            # Handle nested imports like 'libtorrent.libtorrent'
+            module_parts = package_name.split('.')
+            module = __import__(module_parts[0])
+            for part in module_parts[1:]:
+                module = getattr(module, part)
+            lt = module
+        else:
+            lt = __import__(package_name)
+        
         LIBTORRENT_AVAILABLE = True
-        logging.info("deluge-libtorrent imported successfully")
+        logging.info(f"{display_name} imported successfully")
+        break
     except ImportError:
-        try:
-            # Try another alternative
-            from libtorrent import libtorrent as lt
-            LIBTORRENT_AVAILABLE = True
-            logging.info("Alternative libtorrent imported successfully")
-        except ImportError:
-            LIBTORRENT_AVAILABLE = False
-            logging.warning("libtorrent not available - torrent downloads will be disabled")
+        continue
+
+if not LIBTORRENT_AVAILABLE:
+    logging.warning("libtorrent not available - torrent downloads will be disabled")
 
 class URLDownloader:
     def __init__(self, base_path="TEMP"):

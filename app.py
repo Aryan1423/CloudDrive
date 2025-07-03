@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.formparser import parse_form_data
 import uuid
 import threading
-from bin.modules.url_downloader import URLDownloader
+from bin.modules.url_downloader import URLDownloader, LIBTORRENT_AVAILABLE
 from bin.modules.file_sharing import FileSharing
 import re
 import time
@@ -89,6 +89,11 @@ def logout():
     session.clear()
     flash("You have been logged out.")
     return redirect(url_for("login"))
+
+# Add torrent availability to app context
+@app.context_processor
+def inject_torrent_status():
+    return dict(torrent_available=LIBTORRENT_AVAILABLE)
 
 # ---- Main routes ----
 

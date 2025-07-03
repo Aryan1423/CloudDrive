@@ -1,0 +1,2 @@
+# Optional dependencies - these may fail on some platforms
+libtorrent==2.0.11
